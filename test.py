@@ -8,7 +8,7 @@ The MABY testing script.
 
 import argparse
 from dataset import PositionDataset, transform
-from dlmbl_unet import UNet
+from model import UNet
 import logging
 from pathlib import Path
 from torch.utils.data import DataLoader

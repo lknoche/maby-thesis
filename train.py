@@ -5,7 +5,7 @@ The MABY training script.
 import argparse
 import datetime
 from dataset import PositionDataset, augment, transform
-from dlmbl_unet import UNet
+from model import UNet
 import logging
 from pathlib import Path
 import torch
