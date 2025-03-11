@@ -17,6 +17,7 @@ import wandb
 
 
 def main(
+    base_dir: str,
     gfp_type: str,
     train_positions: list[int] = [1, 2, 3],
     val_position: int = 4,
@@ -31,7 +32,7 @@ def main(
     num_epochs: int = 40,
 ):
     # Training dataset
-    base_dir = Path("/nrs/funke/adjavond/maby/data")
+    base_dir = Path(base_dir)
     data_dir = base_dir / "MAYBE_training_00"
     metadata_dir = base_dir / "2179_2024_05_08_MAYBE_training_00"
     output_dir = Path("/nrs/funke/adjavond/maby/output")
@@ -165,8 +166,27 @@ def main(
 
 def parse_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument("-g", "--gfp_type", type=str, required=True)
-    parser.add_argument("-e", "--num_epochs", type=int, default=50)
+    parser.add_argument(
+        "-b",
+        "--base_dir",
+        type=str,
+        required=True,
+        help="Base directory in which the data is found. The dataset must be downloaded locally. This is a required argument.",
+    )
+    parser.add_argument(
+        "-g",
+        "--gfp_type",
+        type=str,
+        required=True,
+        help="Which GFP to train. For example: Vph1, Hog1, etc.",
+    )
+    parser.add_argument(
+        "-e",
+        "--num_epochs",
+        type=int,
+        default=50,
+        help="Number of epochs to train for.",
+    )
     return parser.parse_args()
 
 
@@ -175,4 +195,4 @@ if __name__ == "__main__":
         level=logging.INFO, format="%(asctime)s - %(levelname)s: %(message)s"
     )
     args = parse_args()
-    main(args.gfp_type, num_epochs=args.num_epochs)
+    main(args.base_dir, args.gfp_type, num_epochs=args.num_epochs)
