@@ -4,7 +4,7 @@ The MABY training script.
 
 import argparse
 import datetime
-from dataset import PositionDataset, augment, transform
+from dataset import LocalPositionDataset, augment, transform
 from model import UNet
 import logging
 from pathlib import Path
@@ -45,7 +45,7 @@ def main(
     logging.info("Loading the training dataset")
     train_dataset = torch.utils.data.ConcatDataset(
         [
-            PositionDataset(
+            LocalPositionDataset(
                 image_folder=data_dir / f"{gfp_type}_{position:03d}",
                 h5_file=metadata_dir / f"{gfp_type}_{position:03d}.h5",
                 transform=augment,

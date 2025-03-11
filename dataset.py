@@ -2,6 +2,7 @@ import torch
 from torch.utils.data import Dataset
 from image import DownloadedImageDir
 from aliby.tile.tiler import Tiler
+from aliby.io.omero import UnsafeImage
 import dask.array as da
 import logging
 import numpy as np
@@ -44,7 +45,7 @@ class PositionDataset(Dataset):
 
     def __init__(
         self,
-        image_folder: str,
+        image,
         h5_file: str,
         transform=None,
         percentile=[0.1, 99.9],
@@ -55,7 +56,6 @@ class PositionDataset(Dataset):
         end_tp=None,
         m_std=3.0,
     ):
-        image = DownloadedImageDir(image_folder)
         self.data = image.data
         self.tiler = Tiler.from_h5(image, h5_file)
         self.transform = transform
@@ -134,3 +134,66 @@ class PositionDataset(Dataset):
             stacked = self.transform(stacked)
             x, y = stacked[0], stacked[1]
         return x, y
+
+
+class OmeroPositionDataset(PositionDataset):
+    """
+    Dataset for a single position, located on OMERO.
+    """
+
+    def __init__(
+        self,
+        image_id: int,
+        h5_file: str,
+        transform=None,
+        percentile=[0.1, 99.9],
+        per_tp_normalization=False,
+        input_channel=0,
+        output_channel=1,
+        start_tp=0,
+        end_tp=None,
+        **server_kwargs,
+    ):
+        image = UnsafeImage(image_id, **server_kwargs)
+        super().__init__(
+            image,
+            h5_file,
+            transform,
+            percentile,
+            per_tp_normalization,
+            input_channel,
+            output_channel,
+            start_tp,
+            end_tp,
+        )
+
+
+class LocalPositionDataset(PositionDataset):
+    """
+    Dataset for a single position, stored locally.
+    """
+
+    def __init__(
+        self,
+        image_folder: str,
+        h5_file: str,
+        transform=None,
+        percentile=[0.1, 99.9],
+        per_tp_normalization=False,
+        input_channel=0,
+        output_channel=1,
+        start_tp=0,
+        end_tp=None,
+    ):
+        image = DownloadedImageDir(image_folder)
+        super().__init__(
+            image,
+            h5_file,
+            transform,
+            percentile,
+            per_tp_normalization,
+            input_channel,
+            output_channel,
+            start_tp,
+            end_tp,
+        )
