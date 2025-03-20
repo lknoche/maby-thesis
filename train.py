@@ -4,16 +4,19 @@ The MABY training script.
 
 import argparse
 import datetime
-from dataset import LocalPositionDataset, augment, transform
-from model import UNet
 import logging
 from pathlib import Path
+
 import torch
-from torch import nn
-from torch.utils.data import DataLoader
-from torch.optim import Adam
-from tqdm import tqdm
 import wandb
+from aliby.io.omero import Dataset
+from torch import nn
+from torch.optim import Adam
+from torch.utils.data import DataLoader
+from tqdm import tqdm
+
+from dataset import OmeroPositionDataset, LocalPositionDataset, augment, transform
+from model import UNet
 
 
 def main(
@@ -30,40 +33,67 @@ def main(
     val_batch_size: int = 16,
     num_workers: int = 32,
     num_epochs: int = 40,
+    server_info: dict = {},
 ):
     # Training dataset
     base_dir = Path(base_dir)
-    data_dir = base_dir / "MAYBE_training_00"
-    metadata_dir = base_dir / "2179_2024_05_08_MAYBE_training_00"
-    output_dir = Path("/nrs/funke/adjavond/maby/output")
+    omero_id = 2179
+    if server_info:
+        with Dataset(omero_id, **server_info) as dataset_om:
+            positions_dict = dataset_om.get_position_ids()
+    else:
+        data_dir = base_dir / "MAYBE_training_00"
+    metadata_dir = base_dir / f"{omero_id}_2024_05_08_MAYBE_training_00"
+    output_dir = base_dir / "output"
 
     today = datetime.date.today().strftime("%Y-%m-%d")
     experiment_name = f"{today}_train_{gfp_type}"
     this_experiment_dir = output_dir / experiment_name
 
     this_experiment_dir.mkdir(exist_ok=True, parents=True)
-
     logging.info("Loading the training dataset")
-    train_dataset = torch.utils.data.ConcatDataset(
-        [
-            LocalPositionDataset(
-                image_folder=data_dir / f"{gfp_type}_{position:03d}",
-                h5_file=metadata_dir / f"{gfp_type}_{position:03d}.h5",
-                transform=augment,
-                end_tp=100,
-            )
-            for position in train_positions
-        ]
-    )
-
-    logging.info("Loading the validation dataset")
-    # Validation dataset
-    val_dataset = PositionDataset(
-        image_folder=data_dir / f"{gfp_type}_{val_position:03d}",
-        h5_file=metadata_dir / f"{gfp_type}_{val_position:03d}.h5",
-        transform=transform,
-        end_tp=100,
-    )
+    if server_info:
+        train_dataset = torch.utils.data.ConcatDataset(
+            [
+                OmeroPositionDataset(
+                    image_id=positions_dict[f"{gfp_type}_{position:03d}"],
+                    h5_file=metadata_dir / f"{gfp_type}_{position:03d}.h5",
+                    transform=augment,
+                    end_tp=100,
+                    server_info=server_info,
+                )
+                for position in train_positions
+            ]
+        )
+        logging.info("Loading the validation dataset")
+        # Validation dataset
+        val_dataset = OmeroPositionDataset(
+            image_id=positions_dict[f"{gfp_type}_{val_position:03d}"],
+            h5_file=metadata_dir / f"{gfp_type}_{val_position:03d}.h5",
+            transform=transform,
+            end_tp=100,
+            **server_info,
+        )
+    else:
+        train_dataset = torch.utils.data.ConcatDataset(
+            [
+                LocalPositionDataset(
+                    image_folder=data_dir / f"{gfp_type}_{position:03d}",
+                    h5_file=metadata_dir / f"{gfp_type}_{position:03d}.h5",
+                    transform=augment,
+                    end_tp=100,
+                )
+                for position in train_positions
+            ]
+        )
+        logging.info("Loading the validation dataset")
+        # Validation dataset
+        val_dataset = LocalPositionDataset(
+            image_folder=data_dir / f"{gfp_type}_{val_position:03d}",
+            h5_file=metadata_dir / f"{gfp_type}_{val_position:03d}.h5",
+            transform=transform,
+            end_tp=100,
+        )
 
     logging.info("Setting up the model")
     # Setup the model

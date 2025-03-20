@@ -1,14 +1,16 @@
-import torch
-from torch.utils.data import Dataset
-from image import DownloadedImageDir
-from aliby.tile.tiler import Tiler
-from aliby.io.omero import UnsafeImage
-import dask.array as da
 import logging
+
+import dask.array as da
 import numpy as np
-from tqdm import tqdm
-from torchvision import transforms
+import torch
 import torchvision.transforms.functional as F
+from aliby.io.image import dispatch_image
+from aliby.tile.tiler import Tiler
+from torch.utils.data import Dataset
+from torchvision import transforms
+from tqdm import tqdm
+
+from image import DownloadedImageDir
 
 
 def augment(x, threshold=0.5):
@@ -55,6 +57,7 @@ class PositionDataset(Dataset):
         start_tp=0,
         end_tp=None,
         m_std=3.0,
+        server_info={},
     ):
         self.data = image.data
         self.tiler = Tiler.from_h5(image, h5_file)
@@ -85,10 +88,10 @@ class PositionDataset(Dataset):
         for timepoint in tqdm(range(self.start_tp, self.end_tp)):
             input_range = da.percentile(
                 self.data[timepoint, self.input_channel].flatten(), percentile
-            ).compute()
+            ).compute(scheduler="synchronous")
             output_range = da.percentile(
                 self.data[timepoint, self.output_channel].flatten(), percentile
-            ).compute()
+            ).compute(scheduler="synchronous")
             self.input_range.append(input_range)
             self.output_range.append(output_range)
         self.input_range = np.array(self.input_range)
@@ -101,10 +104,10 @@ class PositionDataset(Dataset):
         logging.warning("Calculating normalization range, this may take a while.")
         self.input_range = da.percentile(
             self.data[:, self.input_channel].flatten(), percentile
-        ).compute()
+        ).compute(scheduler="synchronous")
         self.output_range = da.percentile(
             self.data[:, self.output_channel].flatten(), percentile
-        ).compute()
+        ).compute(scheduler="synchronous")
 
     def __len__(self):
         return self.tiler.no_tiles * (self.end_tp - self.start_tp)
@@ -152,20 +155,21 @@ class OmeroPositionDataset(PositionDataset):
         output_channel=1,
         start_tp=0,
         end_tp=None,
-        **server_kwargs,
+        server_info={},
     ):
-        image = UnsafeImage(image_id, **server_kwargs)
-        super().__init__(
-            image,
-            h5_file,
-            transform,
-            percentile,
-            per_tp_normalization,
-            input_channel,
-            output_channel,
-            start_tp,
-            end_tp,
-        )
+        with dispatch_image(image_id)(image_id, **server_info) as image:
+            super().__init__(
+                image,
+                h5_file,
+                transform,
+                percentile,
+                per_tp_normalization,
+                input_channel,
+                output_channel,
+                start_tp,
+                end_tp,
+                server_info=server_info,
+            )
 
 
 class LocalPositionDataset(PositionDataset):
