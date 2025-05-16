@@ -1,147 +1,31 @@
-from aliby.io.image import BaseLocalImage
 from pathlib import Path
 import re
-import dask  # for delayed
+import dask
 import dask.array as da
 from skimage.io import imread
+import collections
 
 
 class DownloadedExperiment:
-    """
-    Groups all of the positions for a single experiment.
-    Each subdirectory corresponds to one position.
-    """
-
     def __init__(self, image_folder: str):
         self.image_folder = Path(image_folder)
         self.positions = self._get_positions()
 
     def _get_positions(self):
-        """
-        Get the positions in the image folder
-        """
         return sorted([x.name for x in self.image_folder.iterdir() if x.is_dir()])
 
 
-class DownloadedImageDir(BaseLocalImage):
-    # TODO match to BaseLocalImage
-    """
-    Images are stored in a directory as tiff files by default.
-    """
-
-    def __init__(self, image_folder: str, suffix: str = "tif"):
+class DownloadedImageDir:
+    def __init__(self, image_folder: str, suffix: str = "tiff"):
         self.image_folder = Path(image_folder)
-        # Assuming the experiment name is the parent folder
-        self.experiment_name = self.image_folder.parent.name
-        # Assuming the position name is the folder name
-        self._name = self.image_folder.name
+        self.experiment_name = self.image_folder.name
+        self._name = self.image_folder.name if self.image_folder.is_dir() else self.image_folder.parent.name
         self.suffix = suffix
-        self.meta, self.filenames = self._read_metadata()
-
-    def _read_metadata(self):
-        """
-        Get all metadata for a position by reading its files.
-        """
-        files = sorted(
-            [x.stem for x in self.image_folder.iterdir() if x.suffix == ".tif"]
-        )
-        file_metadata = [self._read_filename(file) for file in files]
-        # Get all channels
-        channels = set([x["channel"] for x in file_metadata])
-        channels = sorted(channels)
-        # Group metadata by channel
-        metadata = {
-            channel: [x for x in file_metadata if x["channel"] == channel]
-            for channel in channels
-        }
-        # Get the maximum timepoint for each channel
-        # NOTE +1 because 0-based indexing
-        max_timepoint = {
-            channel: max([x["timepoint"] for x in metadata[channel]]) + 1
-            for channel in channels
-        }
-        # Make sure that all channels have the same number of timepoints
-        if len(set(max_timepoint.values())) > 1:
-            raise ValueError("Channels have different number of timepoints")
-        # Get the maximum z slice
-        # NOTE +1 because 0-based indexing
-        max_z = {
-            channel: max([x["z"] for x in metadata[channel]]) + 1
-            for channel in channels
-        }
-        # Make sure that all timepoints have the same number of z slices
-        # NOTE +1 because 0-based indexing
-        for channel in channels:
-            for timepoint in range(max_timepoint[channel]):
-                max_z_timepoint = (
-                    max(
-                        [
-                            x["z"]
-                            for x in metadata[channel]
-                            if x["timepoint"] == timepoint
-                        ]
-                    )
-                    + 1
-                )
-                if max_z_timepoint != max_z[channel]:
-                    raise ValueError(
-                        f"Timepoint {timepoint} has different number of z slices"
-                    )
-        # Make sure that both channels have the same number of z slices
-        if len(set(max_z.values())) > 1:
-            raise ValueError("Channels have different number of z slices")
-        # Keep only the maximum timepoint and z slice
-        max_z = max(max_z.values())
-        max_timepoint = max(max_timepoint.values())
-        # Finally, assuming all images have the same shape, get the shape of the first image
-        img = imread(self.image_folder / (files[0] + f".{self.suffix}"))
-        size_y, size_x = img.shape
-        dtype = img.dtype
-
-        # Create the metadata for the experiment
-        experiment_metadata = {
-            "channels": channels,
-            "size_t": max_timepoint,
-            "size_c": len(channels),
-            "size_z": max_z,
-            "size_y": size_y,
-            "size_x": size_x,
-            "dtype": dtype,
-        }
-        # Create the filenames list in the correct order (TZCYX)
-        filenames = []
-        for timepoint in range(max_timepoint):
-            for channel in channels:
-                for z in range(max_z):
-                    filenames.append(
-                        f"{self.experiment_name}_{timepoint:06d}_{channel}_{z:03d}"
-                    )
-        return experiment_metadata, filenames
+        self.metadata, self.filenames = self._read_metadata()
 
     def _read_filename(self, filename: str) -> dict:
-        """
-        Filenames are descriptive of the timepoint and channels.
-        For example, in MAYBE_training_00/Hog1_GFP_001/MAYBE_training_00_000000_GFP_Z_000.tif
-        We can see the order:
-            Experiment name: MAYBE_training_00
-            Position name: Hog1_GFP_001
-            Filename is made up of:
-                Experiment name: MAYBE_training_00
-                Timepoint: 000000
-                Channel: GFP_Z
-                Z slice: 000
-
-        Parameters
-        ----------
-        filename : str
-            Filename of the image without the suffix
-        """
-        # Remove the experiment name
         filename = filename.replace(self.experiment_name + "_", "")
-        # Use a single regex to capture timepoint, channel, and z slice
-        match = re.search(
-            r"(?P<timepoint>\d{6})_(?P<channel>[A-Za-z_]+)_(?P<z>\d{3})$", filename
-        )
+        match = re.search(r"(?P<timepoint>\d{6})_(?P<channel>[A-Za-z_]+)_(?P<z>\d{3})$", filename)
         if match:
             result = match.groupdict()
             result["timepoint"] = int(result["timepoint"])
@@ -149,6 +33,59 @@ class DownloadedImageDir(BaseLocalImage):
             return result
         else:
             raise ValueError("Filename does not match the expected pattern")
+
+    def _read_metadata(self):
+        files = sorted([x.stem for x in self.image_folder.iterdir() if x.suffix == ".tiff"])
+        file_metadata = [self._read_filename(file) for file in files]
+
+        grouped = collections.defaultdict(lambda: collections.defaultdict(set))  # {channel: {tp: set(z)}}
+        for meta in file_metadata:
+            grouped[meta["channel"]][meta["timepoint"]].add(meta["z"])
+
+        expected_z = {
+            channel: max(len(zs) for zs in tps.values())
+            for channel, tps in grouped.items()
+        }
+
+        valid_timepoints = set.intersection(*[
+            {tp for tp, zs in tps.items() if len(zs) == expected_z[channel]}
+            for channel, tps in grouped.items()
+        ])
+
+        if not valid_timepoints:
+            raise ValueError("No valid timepoints with full z-stacks across all channels.")
+
+        channels = sorted(grouped.keys())
+        max_z = max(expected_z.values())
+        max_timepoint = max(valid_timepoints)
+
+        first_file = next((f for f in self.image_folder.iterdir() if f.suffix == ".tiff"), None)
+        img = imread(first_file)
+        size_y, size_x = img.shape
+        dtype = img.dtype
+
+        meta = {
+            "channels": channels,
+            "size_t": max_timepoint + 1,
+            "size_c": len(channels),
+            "size_z": max_z,
+            "size_y": size_y,
+            "size_x": size_x,
+            "dtype": dtype,
+        }
+
+        filenames = [
+            f"{self.experiment_name}_{t:06d}_{c}_{z:03d}"
+            for t in sorted(valid_timepoints)
+            for c in channels
+            for z in range(expected_z[c])
+        ]
+
+        missing_tps = sorted(set(range(max_timepoint + 1)) - valid_timepoints)
+        if missing_tps:
+            print(f"\u26a0\ufe0f Skipped {len(missing_tps)} incomplete timepoints: {missing_tps[:5]}{'...' if len(missing_tps) > 5 else ''}")
+
+        return meta, filenames
 
     @property
     def name(self):
@@ -159,29 +96,44 @@ class DownloadedImageDir(BaseLocalImage):
         return "TCZYX"
 
     def get_data_lazy(self):
-        """
-        Lazy loading of the data using dask to create 5d array in TZCYX order.
-        """
-        lazy_arrays = [
-            da.from_delayed(
-                dask.delayed(imread)(
-                    self.image_folder / (filename + f".{self.suffix}")
-                ),
-                shape=(self.metadata["size_y"], self.metadata["size_x"]),
-                dtype=self.metadata["dtype"],
+        lazy_arrays = []
+        tcz_index = []
+
+        channels = self.metadata["channels"]
+        z_slices = self.metadata["size_z"]
+
+        for filename in self.filenames:
+            path = self.image_folder / f"{filename}.{self.suffix}"
+            match = re.search(r"_(\d{6})_([A-Za-z_]+)_(\d{3})$", filename)
+            if not match:
+                continue
+            t, c, z = match.groups()
+            t, z = int(t), int(z)
+            if c not in channels:
+                continue
+            lazy_arrays.append(
+                da.from_delayed(
+                    dask.delayed(imread)(path),
+                    shape=(self.metadata["size_y"], self.metadata["size_x"]),
+                    dtype=self.metadata["dtype"],
+                )
             )
-            for filename in self.filenames
-        ]
-        # Stack the lazy arrays
+            tcz_index.append((t, c, z))
+
+        tcz_sorted = sorted(zip(tcz_index, lazy_arrays), key=lambda x: (x[0][0], channels.index(x[0][1]), x[0][2]))
+        tcz_index_sorted, lazy_arrays = zip(*tcz_sorted)
+
+        timepoints = sorted(set(t for t, _, _ in tcz_index_sorted))
+        T, C, Z = len(timepoints), len(channels), z_slices
+
+        expected_size = T * C * Z
+        if len(lazy_arrays) != expected_size:
+            raise ValueError(f"Mismatch: expected {expected_size} images, got {len(lazy_arrays)}. Cannot reshape.")
+
         lazy_data = da.stack(lazy_arrays)
-        # Reshape to TZCYX
-        lazy_data = lazy_data.reshape(
-            (
-                self.metadata["size_t"],
-                self.metadata["size_c"],
-                self.metadata["size_z"],
-                self.metadata["size_y"],
-                self.metadata["size_x"],
-            )
-        )
+        lazy_data = lazy_data.reshape((T, C, Z, self.metadata["size_y"], self.metadata["size_x"]))
         return lazy_data
+
+    @property
+    def data(self):
+        return self.get_data_lazy()
