@@ -14,7 +14,7 @@ from dataset import LocalPositionDataset, augment, transform
 from model import UNet
 
 
-def main(base_dir: str, gfp_type: str = "Vph1", num_epochs: int = 20):
+def main(base_dir: str, gfp_type: str = "Hog1", num_epochs: int = 20):
     logging.basicConfig(level=logging.INFO)
     base_dir = Path(base_dir)
     data_dir = base_dir / "images_structured"
