@@ -1,4 +1,3 @@
-import os
 import subprocess
 from pathlib import Path
 from omero.gateway import BlitzGateway
@@ -12,8 +11,7 @@ USERNAME = 'upload'
 PASSWORD = 'gothamc1ty'
 PORT = 4064
 DATASET_ID = 2179
-GFP_TYPE = "Hog1"  
-GFP_PREFIX = GFP_TYPE  
+GFP_TYPE = "Hog1"  # 👈 Change this line to switch GFP
 TIFF_DIR = Path("images_structured")
 TIFF_DIR.mkdir(exist_ok=True)
 LOG_PATH = Path("check_timepoints.log")
@@ -27,9 +25,7 @@ logging.basicConfig(
 
 def tiffs_already_downloaded(gfp_prefix):
     structured_dir = TIFF_DIR / f"{gfp_prefix}_001"
-    if not structured_dir.exists():
-        return False
-    return any(structured_dir.glob("*.tiff"))
+    return structured_dir.exists() and any(structured_dir.glob("*.tiff"))
 
 def download_tiffs():
     print("📡 Connecting to OMERO...")
@@ -39,10 +35,10 @@ def download_tiffs():
     if dataset is None:
         raise ValueError(f"No dataset with ID {DATASET_ID} found.")
 
-    print(f"⬇️ Downloading TIFFs with original names for {GFP_PREFIX}...")
+    print(f"⬇️ Downloading TIFFs for {GFP_TYPE}...")
     for image in dataset.listChildren():
         name = image.getName()
-        if not name.startswith(GFP_PREFIX):
+        if not name.startswith(GFP_TYPE):
             continue
 
         img_dir = TIFF_DIR / name
@@ -76,7 +72,7 @@ def download_tiffs():
 def analyze_timepoints():
     print("🔍 Analyzing completeness of timepoints...")
     expected_channels = ["Brightfield", "GFP_Z"]
-    expected_z = 5  # Adjust if needed
+    expected_z = 5
     for subfolder in TIFF_DIR.glob(f"{GFP_TYPE}_GFP_*"):
         counts = {}
         for file in subfolder.glob("*.tiff"):
@@ -103,17 +99,8 @@ def run_training():
     result = subprocess.run(cmd)
     return result.returncode == 0
 
-def cleanup_tiffs():
-    print("🧹 Cleaning up TIFFs (excluding position 005)...")
-    for subfolder in TIFF_DIR.glob(f"{GFP_TYPE}_*"):
-        pos_id = subfolder.name.split("_")[-1]
-        if pos_id != "005":
-            print(f"🗑️ Deleting: {subfolder}")
-            for tif in subfolder.glob("*.tiff"):
-                tif.unlink()
-
 def main():
-    if not tiffs_already_downloaded(GFP_PREFIX):
+    if not tiffs_already_downloaded(GFP_TYPE):
         download_tiffs()
     else:
         print("✅ TIFFs already present. Skipping download.")
@@ -123,7 +110,6 @@ def main():
     success = run_training()
 
     if success:
-        # cleanup_tiffs()  # optional cleanup
         print("✅ Training completed successfully.")
     else:
         print("❌ Training failed. TIFFs kept for debugging.")

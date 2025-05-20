@@ -14,7 +14,7 @@ from dataset import LocalPositionDataset, augment, transform
 from model import UNet
 
 
-def main(base_dir: str, gfp_type: str = "Hog1", num_epochs: int = 20):
+def main(base_dir: str, gfp_type: str, num_epochs: int = 20):
     logging.basicConfig(level=logging.INFO)
     base_dir = Path(base_dir)
     data_dir = base_dir / "images_structured"
@@ -73,15 +73,12 @@ def main(base_dir: str, gfp_type: str = "Hog1", num_epochs: int = 20):
         train_loss = 0
         for i, (x, y) in enumerate(tqdm(train_loader, desc=f"Epoch {epoch}")):
             x, y = x.float().to(device), y.float().to(device)
-            logging.debug(f"[Train][Epoch {epoch}][Batch {i}] x: {x.min():.4f} – {x.max():.4f}")
-            logging.debug(f"[Train][Epoch {epoch}][Batch {i}] y: {y.min():.4f} – {y.max():.4f}")
             optimizer.zero_grad()
             y_hat = model(x)
             loss = criterion(y_hat, y)
             loss.backward()
             optimizer.step()
             train_loss += loss.item()
-
         train_loss /= len(train_loader)
 
         model.eval()
@@ -89,12 +86,9 @@ def main(base_dir: str, gfp_type: str = "Hog1", num_epochs: int = 20):
         with torch.no_grad():
             for i, (x, y) in enumerate(val_loader):
                 x, y = x.float().to(device), y.float().to(device)
-                logging.debug(f"[Val][Epoch {epoch}][Batch {i}] x: {x.min():.4f} – {x.max():.4f}")
-                logging.debug(f"[Val][Epoch {epoch}][Batch {i}] y: {y.min():.4f} – {y.max():.4f}")
                 y_hat = model(x)
                 loss = criterion(y_hat, y)
                 val_loss += loss.item()
-
         val_loss /= len(val_loader)
 
         logging.info(f"Epoch {epoch}: Train loss: {train_loss:.4f}, Val loss: {val_loss:.4f}")
@@ -120,7 +114,7 @@ def main(base_dir: str, gfp_type: str = "Hog1", num_epochs: int = 20):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("-b", "--base_dir", required=True)
-    parser.add_argument("-g", "--gfp_type", default="Vph1")
+    parser.add_argument("-g", "--gfp_type", required=True)
     parser.add_argument("-e", "--num_epochs", type=int, default=20)
     parsed = parser.parse_args()
     main(parsed.base_dir, parsed.gfp_type, parsed.num_epochs)
