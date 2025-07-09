@@ -1,15 +1,17 @@
 # MABY-Thesis: Yeast Compartment Segmentation with U-Net and Classical Methods
 
-This repository contains the codebase used for my bachelor thesis project:  
+This repository contains the codebase used for my bachelor thesis project:
 **"Deep Learning vs Classical Segmentation: A Study on Yeast Cell Compartments"**
 
 It extends [adjavon/maby](https://github.com/adjavon/maby) with a full training and evaluation pipeline for U-Net segmentation and comparisons with classical methods like Cellpose and Otsu thresholding.
 
-🔗 Repository: [https://github.com/lknoche/maby-thesis](https://github.com/lknoche/maby-thesis)
+\:link: Repository: [https://github.com/lknoche/maby-thesis](https://github.com/lknoche/maby-thesis)
 
 ---
 
-## Project Structure:
+## 📁 Project Structure
+
+```
 maby-thesis/
 ├── README.md
 ├── requirements.txt
@@ -42,22 +44,81 @@ maby-thesis/
 
 ├── plots/
 │   └── plot_results.py
+```
+
+---
+
+## 🚀 How to Use
+
+1. **Set up environment**
+   Clone the repository and install dependencies:
+
+   ```bash
+   git clone https://github.com/lknoche/maby-thesis.git
+   cd maby-thesis
+   pip install -r requirements.txt
+   ```
+
+2. **Preprocess data**
+
+   * **If working with OMERO**:
+
+     ```bash
+     python download_and_run.py -g Htb2_sfGFP
+     ```
+   * **If working with local data**:
+
+     ```bash
+     python train.py -b /path/to/data -g Vph1_GFP
+     ```
+
+3. **Evaluate trained model**
+
+   ```bash
+   python test.py -g Vph1_GFP -m model_19.pt
+   ```
+
+4. **Visualize results**
+
+   ```bash
+   python plots/plot_results.py
+   ```
+5. Cellpose and general segmentation
+```bash
+python export/extract_unet_like_tiles_vacuole.py
+```
+```bash
+python overlays/run_cellpose_vph1.py
+python overlays/general_segmentation_otsu.py
+```
+```bash
+python overlays/overlay_cellpose_vph1.py
+```
+```bash
+python overlays/make_combined_overlay_grid_vacuole.py
+```
 
 
+---
 
-##How to use:
-1.Set up environment:
-git clone https://github.com/lknoche/maby-thesis.git
-cd maby-thesis
+## 📦 Requirements
+
+Install via:
+
+```bash
 pip install -r requirements.txt
-2. Preprocess Data:
-If working with OMERO:
-Use download_and_run.py to download and train:
-python download_and_run.py -g Htb2_sfGFP
-otherwise run train.py directly with the right directory:
-python train.py -b /path/to/data -g Vph1_GFP
-3. Evaluation:
-python test.py  -g Vph1_GFP -m model_19.pt
-4. Visualize Results:
-python plots/plot_results.py
+```
 
+Main dependencies:
+
+* `torch`
+* `numpy`
+* `scikit-image`
+* `matplotlib`
+* `pandas`
+* `seaborn`
+* `tqdm`
+* `wandb`
+* `cellpose`
+* `ome-zarr`
+* `h5py`
